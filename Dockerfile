@@ -1,10 +1,13 @@
 # Organic Hits Exchanger — ONE-CLICK version (works on Railway + Render)
-# The official app serves its UI over HTTPS only, while Render/Railway route
-# plain HTTP into the container. This wrapper adds a small Node HTTP->HTTPS
-# proxy on the platform $PORT (the app stays on internal port 3000) plus a
-# self-ping keep-alive so free services do not spin down.
+# - The official app serves its UI over HTTPS only, while Render/Railway route
+#   plain HTTP into the container: a small Node proxy on $PORT forwards to it.
+# - The session key (ENV below) is written to data/sessions.json by start.sh,
+#   so the exchanger auto-starts on every boot — no UI interaction needed.
+# - A self-ping keep-alive stops free services from spinning down.
 
 FROM organichits/exchanger:latest
+
+ENV SESSION_KEY="OnN8YXBpLm9yZ2FuaWNoaXRzLmNvfDk4ODI1LDIxMzk5MC1UVE9M"
 
 USER root
 
@@ -12,6 +15,9 @@ RUN printf 'const http=require("http"),https=require("https"),tls=require("tls")
 
 RUN printf 'const url=()=>process.env.RENDER_EXTERNAL_URL||(process.env.RAILWAY_PUBLIC_DOMAIN?"https://"+process.env.RAILWAY_PUBLIC_DOMAIN:null);async function ping(){const u=url();if(!u)return;try{await fetch(u,{signal:AbortSignal.timeout(30000)});}catch(e){}}\nping();setInterval(ping,600000);\n' > /home/exchanger/keepalive.js && chmod 644 /home/exchanger/proxy.js /home/exchanger/keepalive.js
 
+COPY start.sh /home/exchanger/start.sh
+RUN chmod 755 /home/exchanger/start.sh
+
 USER exchanger
 
-CMD ["/bin/sh", "-c", "PUB=${PORT:-10000}; APP_PORT=3000 PROXY_PORT=$PUB node /home/exchanger/proxy.js & node /home/exchanger/keepalive.js & PORT=3000 exec node src/server.js"]
+CMD ["/bin/sh", "/home/exchanger/start.sh"]
